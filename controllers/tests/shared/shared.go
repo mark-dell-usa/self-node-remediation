@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gcustom"
 	types2 "github.com/onsi/gomega/types"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,12 +35,29 @@ const (
 	Namespace                = "self-node-remediation"
 	UnhealthyNodeName        = "node1"
 	PeerNodeName             = "node2"
-	Peer2NodeName            = "node3"
-	Peer3NodeName            = "node4"
+
+	ControlPlane1NodeName = UnhealthyNodeName
+	ControlPlane2NodeName = "cp2"
+	ControlPlane3NodeName = "cp3"
+
+	WorkerNode1Name = UnhealthyNodeName
+	WorkerNode2Name = PeerNodeName
+	WorkerNode3Name = "worker3"
+	WorkerNode4Name = "worker4"
+	WorkerNode5Name = "worker5"
+
+	//Peer2NodeName            = "node3"
+	//Peer3NodeName            = "node4"
+	//Peer4NodeName            = "node5"
+	//Peer5NodeName            = "node6"
+	//Peer6NodeName            = "node7"
 
 	SnrPodName1      = "self-node-remediation"
 	SnrPodName2      = "self-node-remediation-2"
 	SnrPodName3      = "self-node-remediation-3"
+	SnrPodName4      = "self-node-remediation-4"
+	SnrPodName5      = "self-node-remediation-5"
+	SnrPodName6      = "self-node-remediation-6"
 	DsDummyImageName = "dummy-image"
 
 	K8sClientReturnRandomPodIPAddressesByDefault = false
@@ -50,6 +68,7 @@ const (
 type K8sClientWrapper struct {
 	client.Client
 	Reader                         client.Reader
+	Manager                        manager.Manager
 	ShouldSimulateFailure          bool
 	ShouldSimulatePodDeleteFailure bool
 	SimulatedFailureMessage        string

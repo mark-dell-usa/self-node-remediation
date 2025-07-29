@@ -83,13 +83,13 @@ func (p *Peers) Start(ctx context.Context) error {
 
 	p.log.Info("peer starting", "name", p.myNodeName)
 	wait.UntilWithContext(ctx, func(ctx context.Context) {
-		updateWorkerPeersError := p.updateWorkerPeers(ctx)
+		updateWorkerPeersError := p.UpdateWorkerPeers(ctx)
 		updateControlPlanePeersError := p.UpdateControlPlanePeers(ctx)
 		if updateWorkerPeersError != nil || updateControlPlanePeersError != nil {
 			// the default update interval is quite long, in case of an error we want to retry quicker
 			quickCtx, quickCancel := context.WithCancel(ctx)
 			wait.UntilWithContext(quickCtx, func(ctx context.Context) {
-				quickUpdateWorkerPeersError := p.updateWorkerPeers(ctx)
+				quickUpdateWorkerPeersError := p.UpdateWorkerPeers(ctx)
 				quickUpdateControlPlanePeersError := p.UpdateControlPlanePeers(ctx)
 				if quickUpdateWorkerPeersError == nil && quickUpdateControlPlanePeersError == nil {
 					quickCancel()
@@ -101,14 +101,14 @@ func (p *Peers) Start(ctx context.Context) error {
 	return nil
 }
 
-func (p *Peers) updateWorkerPeers(ctx context.Context) error {
-	p.log.Info("updateWorkerPeers entered")
+func (p *Peers) UpdateWorkerPeers(ctx context.Context) error {
+	p.log.Info("UpdateWorkerPeers entered")
 	setterFunc := func(addresses []v1.PodIP) {
-		p.log.Info("updateWorkerPeers setter called", "addresses", addresses)
+		p.log.Info("UpdateWorkerPeers setter called", "addresses", addresses)
 		p.workerPeersAddresses = addresses
 	}
 	selectorGetter := func() labels.Selector {
-		p.log.Info("updateWorkerPeers getter called", "workerPeerSelector", p.workerPeerSelector)
+		p.log.Info("UpdateWorkerPeers getter called", "workerPeerSelector", p.workerPeerSelector)
 		return p.workerPeerSelector
 	}
 	resetFunc := func() {

@@ -9,7 +9,6 @@ import (
 	labels2 "github.com/medik8s/common/pkg/labels"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -445,35 +444,85 @@ var _ = Describe("SNR Controller", func() {
 
 	Context("Unhealthy node without api-server access", func() {
 
-		Context("two control node peers found, they tell me I'm unhealthy", func() {
-
-			BeforeEach(func() {
+		DescribeTable("peers found, they tell me I'm unhealthy",
+			func(nodeType string, workerNodeCount int) {
 				additionalNodes := []newNodeConfig{
+					//{
+					//	nodeName: shared.ControlPlane1NodeName,
+					//	labels: map[string]string{
+					//		labels2.MasterRole: "true",
+					//	},
+					//	pods: []newPodConfig{
+					//		{
+					//			name:              shared.SnrPodName2,
+					//			simulatedResponse: api.Unhealthy,
+					//		},
+					//	},
+					//},
 					{
-						nodeName: shared.Peer2NodeName,
+						nodeName: shared.ControlPlane2NodeName,
 						labels: map[string]string{
 							labels2.MasterRole: "true",
 						},
+						pods: []newPodConfig{
+							{
+								name:              shared.ControlPlane2NodeName,
+								simulatedResponse: api.Unhealthy,
+							},
+						},
+					},
+					{
+						nodeName: shared.ControlPlane3NodeName,
+						labels: map[string]string{
+							labels2.MasterRole: "true",
+						},
+						pods: []newPodConfig{
+							{
+								name:              shared.ControlPlane3NodeName,
+								simulatedResponse: api.Unhealthy,
+							},
+						},
+					},
+				}
 
+				var workerNodes []newNodeConfig
+				// Add worker nodes if specified
+				if workerNodeCount > 0 {
+					workerNodes = append(workerNodes, newNodeConfig{
+						nodeName: shared.WorkerNode3Name,
+						labels:   map[string]string{}, // No MasterRole label for workers
 						pods: []newPodConfig{
 							{
-								name:              shared.SnrPodName2,
+								name:              shared.WorkerNode3Name,
 								simulatedResponse: api.Unhealthy,
 							},
 						},
-					},
-					{
-						nodeName: shared.Peer3NodeName,
-						labels: map[string]string{
-							labels2.MasterRole: "true",
-						},
-						pods: []newPodConfig{
-							{
-								name:              shared.SnrPodName3,
-								simulatedResponse: api.Unhealthy,
+					})
+					if workerNodeCount > 1 {
+						workerNodes = append(workerNodes, newNodeConfig{
+							nodeName: shared.WorkerNode4Name,
+							labels:   map[string]string{},
+							pods: []newPodConfig{
+								{
+									name:              shared.WorkerNode4Name,
+									simulatedResponse: api.Unhealthy,
+								},
 							},
-						},
-					},
+						})
+					}
+					if workerNodeCount > 2 {
+						workerNodes = append(workerNodes, newNodeConfig{
+							nodeName: shared.WorkerNode5Name,
+							labels:   map[string]string{},
+							pods: []newPodConfig{
+								{
+									name:              shared.WorkerNode5Name,
+									simulatedResponse: api.Unhealthy,
+								},
+							},
+						})
+					}
+					additionalNodes = append(additionalNodes, workerNodes...)
 				}
 
 				configureClientWrapperToRandomizePodIpAddresses()
@@ -481,18 +530,30 @@ var _ = Describe("SNR Controller", func() {
 				configureUnhealthyNodeAsControlNode()
 				addNodes(additionalNodes)
 
+				//for _, node := range workerNodes {
+				//	peerApiServerTimeout := 5 * time.Second
+				//	peers := peers.New(node.nodeName, shared.PeerUpdateInterval, k8sClient, ctrl.Log.WithName("peers"), peerApiServerTimeout)
+				//	err := k8sClient.Manager.Add(peers)
+				//	Expect(err).ToNot(HaveOccurred())
+				//}
+
+				nodes := &v1.NodeList{}
+
+				Expect(k8sClient.List(context.Background(), nodes)).To(Succeed())
+				//Expect(len(nodes.Items)).To(BeEquivalentTo(2))
+
 				addControlPlaneManager()
 				resetWatchdogTimer()
 				configureApiServerSimulatedFailures(true)
 				configureRemediationStrategy(v1alpha1.ResourceDeletionRemediationStrategy)
 				configureSimulatedPeerResponses(true)
-			})
 
-			It("check that we actually get a triggered watchdog reboot", func() {
-				// It's expected that the next line will fail, even though it shouldn't!
+				// Verify that we actually get a triggered watchdog reboot
 				verifyWatchdogTriggered()
-			})
-		})
+			},
+			Entry("two control plane nodes, 0 worker nodes", "control", 0),
+			Entry("two control plane nodes, 3 worker nodes", "control", 3),
+		)
 
 		Context("api-server should be failing throughout the entire test", func() {
 			BeforeEach(func() {
@@ -1133,7 +1194,7 @@ func createConfig() {
 
 func addControlPlaneManager() {
 	By("Add a control plane manager", func() {
-		controlPlaneMgr := controlplane.NewManager(shared.UnhealthyNodeName, k8sClient)
+		controlPlaneMgr := controlplane.NewManager(shared.ControlPlane1NodeName, k8sClient)
 		Expect(controlPlaneMgr.Start(context.Background())).To(Succeed(), "we should"+
 			"have been able to enable a control plane manager for the current node")
 
@@ -1305,10 +1366,15 @@ func addNodes(nodes []newNodeConfig) {
 
 		}
 
+		Expect(apiConnectivityCheckConfig.Peers.UpdateWorkerPeers(context.Background())).To(Succeed())
+
 		DeferCleanup(func() {
 			By("Removing the additional peer nodes when all relevant tests are complete", func() {
-				Expect(k8sClient.Delete(context.Background(), getNode(shared.Peer2NodeName))).To(Succeed())
-				Expect(k8sClient.Delete(context.Background(), getNode(shared.Peer3NodeName))).To(Succeed())
+				for _, np := range nodes {
+					Expect(k8sClient.Delete(context.Background(), getNode(np.nodeName))).To(Succeed())
+				}
+
+				Expect(apiConnectivityCheckConfig.Peers.UpdateWorkerPeers(context.Background())).To(Succeed())
 			})
 			return
 		})
